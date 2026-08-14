@@ -1,6 +1,11 @@
 streamlit>=1.36
 plotly>=5.22
 pandas>=2.0
+# PENTING: pakai wheel CPU-only. Tanpa baris --extra-index-url di bawah, pip akan
+# menarik torch versi CUDA (~2GB+ dependency NVIDIA yang tidak dipakai sama sekali,
+# karena Streamlit Cloud tidak ada GPU) — ini pemborosan resource besar dan bisa jadi
+# penyebab deploy lambat/gagal di tier gratis.
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.0
 transformers>=4.40
 safetensors>=0.4
