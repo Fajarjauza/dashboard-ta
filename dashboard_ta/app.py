@@ -804,6 +804,17 @@ else:
             fig = style_fig(fig, title="Probabilitas Aspek (sigmoid)", height=330, showlegend=False)
             st.plotly_chart(fig, use_container_width=True, key=f"aspek_chart_{idx}")
 
+            _aspek_presisi_rendah = {"Technical", "Financial"} & set(h["aspek_terdeteksi"])
+            if _aspek_presisi_rendah:
+                _label_presisi = " & ".join(sorted(_aspek_presisi_rendah))
+                ui.info(
+                    f"⚠️ Menurut evaluasi model vs Gold Standard (halaman <b>Performa Model DistilBERT</b>), "
+                    f"presisi aspek <b>{_label_presisi}</b> lebih rendah dibanding Individual/Social "
+                    f"(Technical 52,3% · Financial 44,9% vs Individual 82,9% · Social 82,6%). Untuk komentar "
+                    f"yang pendek/ambigu, model memang lebih rentan salah menandai aspek ini — ini keterbatasan "
+                    f"model yang sudah teridentifikasi di penelitian, bukan kesalahan sistem.", "warning",
+                )
+
             if not h["aspek_terdeteksi"]:
                 ui.info(
                     "<b>NO_ASPECT</b> — tidak ada aspek yang melewati threshold 0,5. Pada data penelitian, "
