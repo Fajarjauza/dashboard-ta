@@ -1,0 +1,13 @@
+streamlit>=1.36
+plotly>=5.22
+pandas>=2.0
+torch>=2.0
+transformers>=4.40
+safetensors>=0.4
+requests>=2.31
+# numpy & gensim DIPIN persis ke versi yang dipakai membuat file assets/lda/*.gensim.
+# JANGAN diubah tanpa generate ulang file model LDA-nya juga - versi numpy yang beda
+# bisa bikin error "is not a known BitGenerator module" saat load model LDA.
+numpy==1.26.4
+gensim==4.3.3
+Sastrawi>=1.0.1
