@@ -105,7 +105,7 @@ def analisis_banyak(list_teks, mode_lengkap=False, progress_cb=None):
         for (i, a), s in zip(peta, sentimen_semua):
             hasil[i]["sentimen"][a] = s
 
-    # ---- 4. Mode Lengkap: LDA + pembanding XNLI ----------------------------
+    # ---- 4. Mode Lengkap: LDA + simulasi pelabelan otomatis XNLI -----------
     if mode_lengkap and pasangan:
         import topic_modeling as tm
 
@@ -113,12 +113,12 @@ def analisis_banyak(list_teks, mode_lengkap=False, progress_cb=None):
         for i, a in peta:
             hasil[i]["topik"][a] = tm.prediksi_topik(hasil[i]["teks_bersih"], a)
 
-        _p("Menjalankan zero-shot XNLI — sentimen (pembanding)...")
+        _p("Menjalankan zero-shot XNLI — simulasi label sentimen...")
         xnli_sent = inf.predict_sentiment_xnli_batch(pasangan)
         for (i, a), x in zip(peta, xnli_sent):
             hasil[i]["xnli_sentimen"][a] = x
 
-        _p("Menjalankan zero-shot XNLI — aspek (pembanding)...")
+        _p("Menjalankan zero-shot XNLI — simulasi label aspek...")
         idx_beraspek = [i for i in idx_valid if hasil[i]["aspek_terdeteksi"]]
         if idx_beraspek:
             xnli_aspek = inf.predict_aspect_xnli_batch([hasil[i]["teks_bersih"] for i in idx_beraspek])
