@@ -515,7 +515,7 @@ else:
         "Jalankan langsung model asli hasil penelitian ini terhadap komentar yang kamu tulis sendiri — "
         "bukan simulasi maupun angka statis.",
         kicker="Live Inference",
-        chips=["🤖 DistilBERT Aspek", "💬 DistilBERT Sentimen", "🧩 LDA Sub-Topik", "⚖️ Zero-shot XNLI"],
+        chips=["🤖 DistilBERT Aspek", "💬 DistilBERT Sentimen", "🧩 LDA Sub-Topik", "🏷️ Simulasi Label XNLI"],
     )
 
     # Mulai memuat model di latar belakang sambil pengguna membaca / mengetik komentar,
@@ -531,21 +531,26 @@ else:
                     "Teks dibersihkan (normalisasi unicode, hapus URL/email/simbol) lalu dinormalisasi "
                     "memakai kamus typo &amp; singkatan hasil penelitian.", CY["700"], "🧹")
             ui.card("2. Deteksi Aspek",
-                    "Model <b>DistilBERT</b> multi-label menentukan aspek mana yang dibahas: Individual, "
-                    "Technical, Social, dan/atau Financial (bisa lebih dari satu, bisa juga tidak ada).",
+                    "Model <b>DistilBERT</b> (rasio 80:10:10 — rasio terbaik hasil eksperimen) multi-label "
+                    "menentukan aspek mana yang dibahas: Individual, Technical, Social, dan/atau Financial "
+                    "(bisa lebih dari satu, bisa juga tidak ada). Ini model <b>klasifikasi final</b> yang "
+                    "performanya (F1, akurasi) dilaporkan sebagai hasil utama penelitian.",
                     CY["600"], "🤖")
             ui.card("3. Sentimen per Aspek",
-                    "Untuk tiap aspek yang terdeteksi, model <b>DistilBERT</b> sentimen menentukan "
-                    "penilaiannya: positif, negatif, atau netral.", CY["500"], "💬")
+                    "Untuk tiap aspek yang terdeteksi, model <b>DistilBERT</b> sentimen (rasio 60:20:20 — "
+                    "rasio terbaik hasil eksperimen) menentukan penilaiannya: positif, negatif, atau netral.",
+                    CY["500"], "💬")
         with s2:
             ui.card("4. Topic Modeling (mode Lengkap)",
                     "Model <b>LDA</b> mencari sub-topik paling cocok di dalam aspek tersebut, misalnya "
                     "\"Error dan Aplikasi Lambat Setelah Update\" untuk aspek Technical.",
                     d.COLOR["aqua"], "🧩")
-            ui.card("5. Pembanding Zero-shot (mode Lengkap)",
-                    "Skor <b>XNLI</b> — model zero-shot yang dipakai melabeli 59.620 data latih secara "
-                    "otomatis — ditampilkan berdampingan agar perbedaannya terlihat.",
-                    d.COLOR["orange"], "⚖️")
+            ui.card("5. Simulasi Pelabelan Otomatis (mode Lengkap)",
+                    "<b>XNLI</b> zero-shot dalam penelitian ini HANYA berperan melabeli (menebak label) "
+                    "59.620 data latih secara otomatis — bukan model klasifikasi produksi. Bagian ini "
+                    "menjalankan XNLI pada komentar kamu untuk mensimulasikan tahap pelabelan itu, "
+                    "berdampingan dengan hasil klasifikasi DistilBERT yang sebenarnya.",
+                    d.COLOR["orange"], "🏷️")
             ui.info(
                 "Model DistilBERT (±260&nbsp;MB × 2) diunduh otomatis sekali saat pertama dipakai. "
                 "Tokenizer dasar &amp; model XNLI diunduh dari HuggingFace Hub — pastikan komputer "
@@ -559,7 +564,7 @@ else:
     with cfg1:
         mode = st.radio(
             "Kedalaman analisis",
-            ["⚡ Cepat — DistilBERT saja", "🔬 Lengkap — + Topic Modeling & Pembanding XNLI"],
+            ["⚡ Cepat — DistilBERT saja", "🔬 Lengkap — + Topic Modeling & Simulasi Label XNLI"],
         )
         mode_lengkap = mode.startswith("🔬")
     with cfg2:
@@ -851,18 +856,18 @@ else:
                             det = " · ".join(f"{k} {v:.2f}" for k, v in x["probabilitas"].items())
                             st.markdown(
                                 f'<div class="card card-accent" style="--accent:{d.COLOR["orange"]};">'
-                                f'<div class="card-title">⚖️ Pembanding Zero-shot (XNLI) {tanda}</div>'
-                                f'<div class="card-desc">Sentimen XNLI: <b>{x["label"].upper()}</b><br>'
+                                f'<div class="card-title">🏷️ Simulasi Label Otomatis (XNLI) {tanda}</div>'
+                                f'<div class="card-desc">Tebakan label XNLI: <b>{x["label"].upper()}</b><br>'
                                 f'<span style="color:{d.COLOR["muted"]};">{det}</span></div></div>',
                                 unsafe_allow_html=True,
                             )
 
             if mode_l and h["xnli_aspek"]:
                 st.write("")
-                st.markdown("**⚖️ Pembanding Deteksi Aspek: DistilBERT vs Zero-shot XNLI**")
+                st.markdown("**🏷️ Klasifikasi DistilBERT vs Simulasi Label Otomatis (XNLI)**")
                 df_b = pd.DataFrame([
-                    {"Aspek": a, "DistilBERT (fine-tuned)": h["aspek"][a]["probabilitas"],
-                     "XNLI (zero-shot)": h["xnli_aspek"][a]}
+                    {"Aspek": a, "DistilBERT — model klasifikasi (fine-tuned)": h["aspek"][a]["probabilitas"],
+                     "XNLI — simulasi label otomatis (zero-shot)": h["xnli_aspek"][a]}
                     for a in ASPECT_ORDER
                 ])
                 fig = px.bar(df_b.melt(id_vars="Aspek", var_name="Model", value_name="Skor"),
@@ -870,13 +875,17 @@ else:
                              color_discrete_sequence=[CY["600"], d.COLOR["orange"]])
                 fig.update_traces(marker_line_width=0)
                 fig.add_hline(y=0.5, line_dash="dot", line_color=d.COLOR["muted"])
-                fig = style_fig(fig, title="Skor Aspek: DistilBERT vs XNLI", height=360)
+                fig = style_fig(fig, title="Skor Aspek: Klasifikasi DistilBERT vs Simulasi Label XNLI", height=360)
                 st.plotly_chart(fig, use_container_width=True, key=f"banding_chart_{idx}")
                 ui.info(
-                    "XNLI adalah model <b>zero-shot</b> yang dipakai penelitian ini untuk melabeli data "
-                    "latih secara otomatis (tanpa fine-tuning), sedangkan DistilBERT sudah "
-                    "<b>di-fine-tune</b> dari label tersebut. Perbedaan hasil keduanya wajar, dan justru "
-                    "menjadi salah satu temuan yang dibahas di halaman Performa Model DistilBERT."
+                    "Perlu diingat perannya beda: <b>XNLI</b> zero-shot dalam penelitian ini HANYA dipakai "
+                    "untuk melabeli (menebak label) 59.620 data latih secara otomatis — bukan model "
+                    "klasifikasi produksi. <b>DistilBERT</b> adalah model klasifikasi yang di-fine-tune dari "
+                    "label tersebut (rasio 80:10:10, rasio terbaik hasil eksperimen), dan performanya (F1, "
+                    "akurasi) itulah yang dilaporkan sebagai hasil utama penelitian di halaman Performa Model "
+                    "DistilBERT. Bagian ini sekadar mensimulasikan ulang tahap pelabelan XNLI pada komentar "
+                    "kamu sebagai ilustrasi — bukan dua model produksi yang bersaing, jadi wajar kalau "
+                    "hasilnya berbeda."
                 )
 
         if len(hasil_semua) == 1:
