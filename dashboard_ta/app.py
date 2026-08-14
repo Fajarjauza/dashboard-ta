@@ -515,7 +515,7 @@ else:
         "Jalankan langsung model asli hasil penelitian ini terhadap komentar yang kamu tulis sendiri — "
         "bukan simulasi maupun angka statis.",
         kicker="Live Inference",
-        chips=["🤖 DistilBERT Aspek", "💬 DistilBERT Sentimen", "🧩 LDA Sub-Topik", "🏷️ Simulasi Label XNLI"],
+        chips=["🤖 DistilBERT — Skor Aspek", "💬 XNLI — Sentimen", "🧩 LDA Sub-Topik"],
     )
 
     # Mulai memuat model di latar belakang sambil pengguna membaca / mengetik komentar,
@@ -530,31 +530,31 @@ else:
             ui.card("1. Preprocessing",
                     "Teks dibersihkan (normalisasi unicode, hapus URL/email/simbol) lalu dinormalisasi "
                     "memakai kamus typo &amp; singkatan hasil penelitian.", CY["700"], "🧹")
-            ui.card("2. Deteksi Aspek",
+            ui.card("2. Skor Aspek (DistilBERT)",
                     "Model <b>DistilBERT</b> (rasio 80:10:10 — rasio terbaik hasil eksperimen) multi-label "
-                    "menentukan aspek mana yang dibahas: Individual, Technical, Social, dan/atau Financial "
-                    "(bisa lebih dari satu, bisa juga tidak ada). Ini model <b>klasifikasi final</b> yang "
-                    "performanya (F1, akurasi) dilaporkan sebagai hasil utama penelitian.",
+                    "menghitung skor tiap aspek — Individual, Technical, Social, Financial — dan menandai "
+                    "aspek yang lolos threshold 0,5 (bisa lebih dari satu, bisa juga tidak ada).",
                     CY["600"], "🤖")
-            ui.card("3. Sentimen per Aspek",
-                    "Untuk tiap aspek yang terdeteksi, model <b>DistilBERT</b> sentimen (rasio 60:20:20 — "
-                    "rasio terbaik hasil eksperimen) menentukan penilaiannya: positif, negatif, atau netral.",
+            ui.card("3. Sentimen per Aspek (XNLI)",
+                    "Untuk tiap aspek yang terdeteksi, <b>XNLI zero-shot</b> menentukan sentimennya: "
+                    "positif, negatif, atau netral — konsisten dengan cara data latih penelitian ini "
+                    "dilabeli.",
                     CY["500"], "💬")
         with s2:
             ui.card("4. Topic Modeling (mode Lengkap)",
                     "Model <b>LDA</b> mencari sub-topik paling cocok di dalam aspek tersebut, misalnya "
                     "\"Error dan Aplikasi Lambat Setelah Update\" untuk aspek Technical.",
                     d.COLOR["aqua"], "🧩")
-            ui.card("5. Simulasi Pelabelan Otomatis (mode Lengkap)",
-                    "<b>XNLI</b> zero-shot dalam penelitian ini HANYA berperan melabeli (menebak label) "
-                    "59.620 data latih secara otomatis — bukan model klasifikasi produksi. Bagian ini "
-                    "menjalankan XNLI pada komentar kamu untuk mensimulasikan tahap pelabelan itu, "
-                    "berdampingan dengan hasil klasifikasi DistilBERT yang sebenarnya.",
+            ui.card("5. Simulasi Label Aspek XNLI (mode Lengkap)",
+                    "Sebagai ilustrasi tambahan, XNLI zero-shot juga dijalankan pada komentar kamu untuk "
+                    "mensimulasikan bagaimana tahap pelabelan aspek dulu bekerja, berdampingan dengan skor "
+                    "DistilBERT.",
                     d.COLOR["orange"], "🏷️")
             ui.info(
-                "Model DistilBERT (±260&nbsp;MB × 2) diunduh otomatis sekali saat pertama dipakai. "
-                "Tokenizer dasar &amp; model XNLI diunduh dari HuggingFace Hub — pastikan komputer "
-                "terhubung internet.", "warning",
+                "Model DistilBERT (±260&nbsp;MB) diunduh otomatis sekali saat pertama dipakai. Model "
+                "zero-shot XNLI (±1-2&nbsp;GB) dipakai untuk SEMUA prediksi (bukan cuma mode Lengkap) "
+                "karena sekarang jadi satu-satunya sumber sentimen — diunduh dari HuggingFace Hub, "
+                "pastikan komputer terhubung internet.", "warning",
             )
 
     # ---------------- form input ----------------
@@ -564,7 +564,7 @@ else:
     with cfg1:
         mode = st.radio(
             "Kedalaman analisis",
-            ["⚡ Cepat — DistilBERT saja", "🔬 Lengkap — + Topic Modeling & Simulasi Label XNLI"],
+            ["⚡ Cepat — Aspek DistilBERT + Sentimen XNLI", "🔬 Lengkap — + Topic Modeling & Simulasi Label Aspek XNLI"],
         )
         mode_lengkap = mode.startswith("🔬")
     with cfg2:
@@ -576,8 +576,9 @@ else:
         + (f", dan maksimal <b>{pipe.MAX_BATCH} komentar</b> sekali jalan." if batch_mode else ".")
         + f" Komentar dengan kurang dari <b>{pipe.MIN_KATA} kata</b> (setelah preprocessing) akan dilewati, "
         "sesuai aturan filtering di penelitian ini."
-        + ("<br><b>Mode Lengkap</b> memakai model XNLI berukuran besar, sehingga tiap komentar "
-           "butuh waktu lebih lama." if mode_lengkap else "")
+        + ("<br>Sentimen memakai model XNLI berukuran besar di kedua mode, jadi tiap komentar butuh "
+           "beberapa detik. <b>Mode Lengkap</b> menambah Topic Modeling & simulasi label aspek XNLI, "
+           "sehingga sedikit lebih lama lagi.")
     )
 
     CONTOH = {
@@ -612,7 +613,7 @@ else:
         ui.kpi(m2, "Karakter Terpanjang", f"{max((len(t) for t in daftar), default=0)}",
                f"batas {pipe.MAX_CHAR} karakter",
                CY["600"] if not terlalu_panjang else d.COLOR["critical"], "📏")
-        ui.kpi(m3, "Estimasi Proses", f"±{max(len(daftar) * (4 if mode_lengkap else 1), 1)} dtk",
+        ui.kpi(m3, "Estimasi Proses", f"±{max(len(daftar) * (6 if mode_lengkap else 3), 1)} dtk",
                "perkiraan kasar (setelah model termuat)", d.COLOR["aqua"], "⏱️")
         st.write("")
         input_list = daftar
@@ -804,25 +805,14 @@ else:
             fig = style_fig(fig, title="Probabilitas Aspek (sigmoid)", height=330, showlegend=False)
             st.plotly_chart(fig, use_container_width=True, key=f"aspek_chart_{idx}")
 
-            _aspek_presisi_rendah = {"Technical", "Financial"} & set(h["aspek_terdeteksi"])
-            if _aspek_presisi_rendah:
-                _label_presisi = " & ".join(sorted(_aspek_presisi_rendah))
-                ui.info(
-                    f"⚠️ Menurut evaluasi model vs Gold Standard (halaman <b>Performa Model DistilBERT</b>), "
-                    f"presisi aspek <b>{_label_presisi}</b> lebih rendah dibanding Individual/Social "
-                    f"(Technical 52,3% · Financial 44,9% vs Individual 82,9% · Social 82,6%). Untuk komentar "
-                    f"yang pendek/ambigu, model memang lebih rentan salah menandai aspek ini — ini keterbatasan "
-                    f"model yang sudah teridentifikasi di penelitian, bukan kesalahan sistem.", "warning",
-                )
-
             if not h["aspek_terdeteksi"]:
                 ui.info(
-                    "<b>NO_ASPECT</b> — tidak ada aspek yang melewati threshold 0,5. Pada data penelitian, "
-                    "10.072 dari 59.620 ulasan (16,9%) juga masuk kategori ini.", "warning",
+                    "<b>NO_ASPECT</b> — tidak ada aspek yang melewati threshold 0,5 untuk komentar ini.",
+                    "warning",
                 )
                 return
 
-            st.markdown("**💬 Sentimen per Aspek Terdeteksi**")
+            st.markdown("**💬 Sentimen per Aspek Terdeteksi (XNLI)**")
             for aspek in h["aspek_terdeteksi"]:
                 s = h["sentimen"][aspek]
                 fg, bg, bd = SENT_LABEL_COLOR.get(s["label"], (d.COLOR["ink"], "#fff", d.COLOR["grid"]))
@@ -840,38 +830,22 @@ else:
                 )
 
                 if mode_l:
-                    t1, t2 = st.columns(2)
-                    with t1:
-                        topik = h["topik"].get(aspek)
-                        if topik:
-                            kata = ", ".join(topik["kata_representatif"])
-                            st.markdown(
-                                f'<div class="card card-accent" style="--accent:{d.COLOR["aqua"]};">'
-                                f'<div class="card-title">🧩 Sub-Topik LDA</div>'
-                                f'<div class="card-desc"><b>{topik["nama_subtopik"]}</b><br>'
-                                f'<span style="color:{d.COLOR["muted"]};">'
-                                f'keyakinan {topik["probabilitas"]:.2f} · kata kunci: {kata}</span>'
-                                f'</div></div>',
-                                unsafe_allow_html=True,
-                            )
-                        else:
-                            ui.card("🧩 Sub-Topik LDA",
-                                    "Tidak dapat ditentukan — kata dalam komentar ini belum cukup "
-                                    "dikenali kosakata LDA untuk aspek tersebut.", d.COLOR["muted"])
-                    with t2:
-                        x = h["xnli_sentimen"].get(aspek)
-                        if x:
-                            sama = x["label"] == s["label"]
-                            tanda = ui.badge("✓ sama", "#eefaee", d.COLOR["good"], "#bfe6bf") if sama else \
-                                ui.badge("≠ beda", "#fff8e8", d.COLOR["warning"], "#f5e0b0")
-                            det = " · ".join(f"{k} {v:.2f}" for k, v in x["probabilitas"].items())
-                            st.markdown(
-                                f'<div class="card card-accent" style="--accent:{d.COLOR["orange"]};">'
-                                f'<div class="card-title">🏷️ Simulasi Label Otomatis (XNLI) {tanda}</div>'
-                                f'<div class="card-desc">Tebakan label XNLI: <b>{x["label"].upper()}</b><br>'
-                                f'<span style="color:{d.COLOR["muted"]};">{det}</span></div></div>',
-                                unsafe_allow_html=True,
-                            )
+                    topik = h["topik"].get(aspek)
+                    if topik:
+                        kata = ", ".join(topik["kata_representatif"])
+                        st.markdown(
+                            f'<div class="card card-accent" style="--accent:{d.COLOR["aqua"]};">'
+                            f'<div class="card-title">🧩 Sub-Topik LDA</div>'
+                            f'<div class="card-desc"><b>{topik["nama_subtopik"]}</b><br>'
+                            f'<span style="color:{d.COLOR["muted"]};">'
+                            f'keyakinan {topik["probabilitas"]:.2f} · kata kunci: {kata}</span>'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        ui.card("🧩 Sub-Topik LDA",
+                                "Tidak dapat ditentukan — kata dalam komentar ini belum cukup "
+                                "dikenali kosakata LDA untuk aspek tersebut.", d.COLOR["muted"])
 
             if mode_l and h["xnli_aspek"]:
                 st.write("")
