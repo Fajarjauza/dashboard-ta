@@ -1,11 +1,17 @@
 """
 Live inference — menjalankan model asli hasil Tugas Akhir (bukan simulasi):
-1. DistilBERT aspek (fine-tuned, multi-label) - cahya/distilbert-base-indonesian
-2. DistilBERT sentimen (fine-tuned, per-aspek) - cahya/distilbert-base-indonesian
-3. (mode "Lengkap") Zero-shot XNLI - MoritzLaurer/mDeBERTa-v3-base-mnli-xnli, buat dibandingkan
-   dengan hasil DistilBERT
+1. DistilBERT aspek (fine-tuned, multi-label, rasio 80:10:10 - rasio terbaik) - dipakai HANYA
+   untuk menghitung skor/probabilitas aspek - cahya/distilbert-base-indonesian
+2. Zero-shot XNLI - MoritzLaurer/mDeBERTa-v3-base-mnli-xnli - satu-satunya sumber sentimen
+   (positif/negatif/netral), dipakai di SEMUA mode (bukan cuma mode "Lengkap")
+3. (mode "Lengkap") XNLI juga dijalankan untuk aspek sebagai simulasi tambahan tahap pelabelan,
+   berdampingan dengan skor DistilBERT
 
-Model DistilBERT (~260MB x2) di-download otomatis dari GitHub Release milik penulis pada
+DistilBERT sentimen (fine-tuned) TETAP ada di repo model (models_final/sentimen) dan tetap
+dipakai untuk menghitung metrik performa (F1, akurasi) yang dilaporkan di halaman "Performa
+Model DistilBERT" — tapi TIDAK dipanggil di jalur live prediction halaman "Prediksi Komentar".
+
+Model DistilBERT aspek (~260MB) di-download otomatis dari GitHub Release milik penulis pada
 pemakaian pertama, lalu di-cache lokal di folder models_cache/. Tokenizer dasar & model XNLI
 di-download dari HuggingFace Hub.
 
@@ -158,13 +164,17 @@ def load_xnli_pipeline():
 
 
 def models_tersedia():
-    """True kalau kedua berkas model DistilBERT sudah ada di cache lokal (tidak perlu unduh)."""
-    return all(_model_ready(CACHE_DIR / k) for k in MODEL_ASSETS)
+    """True kalau berkas model DistilBERT aspek sudah ada di cache lokal (tidak perlu unduh).
+    Model sentimen DistilBERT TIDAK dicek di sini karena tidak dipakai di jalur live prediction
+    (lihat catatan di kepala file) — hanya dipakai untuk menghitung metrik performa statis."""
+    return _model_ready(CACHE_DIR / "aspek")
 
 
 def download_models_with_ui():
-    """Dipanggil sebelum prediksi pertama - nampilin progress bar download."""
-    for key, label in [("aspek", "Model Aspek (DistilBERT)"), ("sentimen", "Model Sentimen (DistilBERT)")]:
+    """Dipanggil sebelum prediksi pertama - nampilin progress bar download.
+    Hanya model aspek yang diunduh (satu-satunya model DistilBERT yang dipakai live;
+    sentimen sepenuhnya memakai XNLI, lihat catatan di kepala file)."""
+    for key, label in [("aspek", "Model Aspek (DistilBERT)")]:
         local_dir = CACHE_DIR / key
         if _model_ready(local_dir):
             continue
