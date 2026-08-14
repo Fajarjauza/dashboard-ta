@@ -1,158 +1,185 @@
-# Dashboard TA — ABSA Ulasan Aplikasi Kesehatan Ibu Hamil
+# Status TERBARU: Sentimen dipindah 100% ke XNLI, DistilBERT sentimen dilepas dari live prediction
 
-Dashboard Streamlit untuk Tugas Akhir *"Aspect-Based Sentiment Analysis Ulasan
-Aplikasi Kesehatan Ibu Hamil Menggunakan Zero-shot Classification dan
-DistilBERT"* — Fajar Jauza Maylana (1202220123), S1 Sistem Informasi,
-Fakultas Rekayasa Industri, Universitas Telkom, 2026.
+## UPDATE (permintaan eksplisit user, setelah beberapa kali hasil aspek Technical dominan di komentar ambigu)
+User: *"gua mau lu ambil best epoch aspek dan sentimen gua yang modeling. sentimen positif negatif
+netral hanya xnli saja yang digunakan. distilbert untuk perhitungan score saja. jangan masukkan
+NILAI GOLD dari penelitian gua untuk bagian menu Prediksi ini biar pure dari model saja hasilnya.
+sesuaikan lagi visualisasi dashboardnya."*
 
-Seluruh angka pada dashboard diambil langsung dari isi dokumen skripsi
-(`data.py`) — tidak ada data yang dikarang. Selain menampilkan hasil
-penelitian, dashboard ini juga bisa menjalankan **prediksi live** memakai
-model asli hasil fine-tuning (bukan simulasi) pada halaman
-**"Prediksi Komentar"**.
+Perubahan yang diimplementasikan (`app.py`, `pipeline.py`, `inference.py`, `README.md` — semua
+sudah dikirim ke user via SendUserFile):
 
-## Menjalankan secara lokal
+1. **Best epoch — sudah terverifikasi TANPA perlu ubah kode/bobot.** Cek notebook
+   `05a_modeling_aspek.ipynb` & `05b_modeling_sentimen.ipynb`: `TrainingArguments(...,
+   save_strategy="epoch", load_best_model_at_end=True, metric_for_best_model=STOP_ON,
+   save_total_limit=1)` + `tr.save_model()` setelah `tr.train()` → checkpoint yang tersimpan di
+   `models_final/aspek` & `models_final/sentimen` SUDAH pasti best-epoch (eval_loss terendah).
+   Juga diverifikasi via `strings training_args.bin` bahwa checkpoint berasal dari rasio terbaik:
+   aspek → `ckpt_80-10-10`, sentimen → `ckpt_60-20-20` (cocok dengan `BEST_RATIO_ASPECT` /
+   `BEST_RATIO_SENTIMENT` di `data.py`).
+2. **Sentimen sekarang SEPENUHNYA dari XNLI zero-shot, di KEDUA mode** (Cepat maupun Lengkap) —
+   bukan lagi dari DistilBERT sentimen. `pipeline.py` step 3 (`analisis_banyak`) memanggil
+   `inf.predict_sentiment_xnli_batch(pasangan)` langsung ke `hasil[i]["sentimen"][a]`
+   (sebelumnya: `inf.predict_sentiment_batch`, model DistilBERT).
+   - Konsekuensi: XNLI (mDeBERTa, ±1-2GB) sekarang WAJIB dimuat untuk SEMUA prediksi, termasuk
+     mode "Cepat" — bedanya mode Cepat vs Lengkap sekarang cuma ada/tidaknya Topic Modeling (LDA)
+     + simulasi label aspek XNLI tambahan. Mode "Cepat" jadi tidak secepat dulu (dulu murni
+     DistilBERT, sekarang tetap butuh XNLI).
+   - Model DistilBERT sentimen (`models_final/sentimen`) TIDAK dihapus dari repo — tetap dipakai
+     untuk menghitung metrik performa statis Bab IV (F1/precision/recall vs Gold Standard di
+     halaman Detail Penelitian) — hanya sudah TIDAK dipanggil lagi di jalur live prediction.
+   - `inference.py`: `models_tersedia()` sekarang hanya cek folder cache "aspek" (bukan
+     "aspek"+"sentimen"). `download_models_with_ui()` cuma mengunduh checkpoint aspek — checkpoint
+     sentimen DistilBERT (~260MB) tidak lagi diunduh runtime sama sekali, hemat bandwidth/waktu.
+3. **DistilBERT HANYA menghitung skor/probabilitas aspek** (Individual/Technical/Social/Financial,
+   threshold 0.5) — perannya tidak berubah dari sebelumnya, cuma sekarang eksplisit didokumentasikan
+   sebagai satu-satunya perannya di live prediction.
+4. **Nilai Gold Standard dihapus dari halaman Prediksi Komentar.** Sebelumnya ada info-box
+   peringatan "presisi rendah Technical/Financial menurut evaluasi vs Gold Standard 720 ulasan" —
+   dihapus total dari hasil prediksi komentar pengguna sendiri, supaya hasil yang ditampilkan
+   murni output model, bukan dicampur klaim statistik dari skripsi. Nilai Gold Standard TETAP
+   ditampilkan apa adanya di halaman "Detail Penelitian" (itu memang laporan hasil penelitian
+   statis, bukan bagian yang diminta "pure model").
+   - Statistik korpus lain yang sebelumnya dikutip di kartu NO_ASPECT ("10.072 dari 59.620 ulasan")
+     juga disederhanakan jadi kalimat generik tanpa angka skripsi, khusus di halaman Prediksi.
+5. **Visualisasi disesuaikan** di `app.py`:
+   - Hero chips halaman Prediksi: `["🤖 DistilBERT — Skor Aspek", "💬 XNLI — Sentimen", "🧩 LDA Sub-Topik"]`
+     (chip "Zero-shot XNLI" terpisah dihapus karena XNLI sekarang bagian inti, bukan fitur mode
+     Lengkap saja).
+   - Mode radio: `"⚡ Cepat — Aspek DistilBERT + Sentimen XNLI"` / `"🔬 Lengkap — + Topic Modeling &
+     Simulasi Label Aspek XNLI"`.
+   - Kartu "how it works" #2/#3 dipisah jadi "Skor Aspek (DistilBERT)" dan "Sentimen per Aspek
+     (XNLI)" — sebelumnya digabung.
+   - Dihapus: kolom perbandingan 2-kolom "sentimen XNLI vs DistilBERT" (badge sama/beda) di
+     bagian hasil per-komentar mode Lengkap — sudah tidak relevan karena sentimen sekarang cuma
+     1 sumber. Diganti kartu LDA sub-topik langsung tanpa split kolom.
+   - Estimasi waktu proses batch diubah dari `4/1 detik per komentar` (Lengkap/Cepat) jadi
+     `6/3 detik` — supaya realistis dengan XNLI yang sekarang jalan di kedua mode.
+   - Bagian perbandingan ASPEK "DistilBERT vs Simulasi Label Otomatis (XNLI)" (dari fase
+     reframing sebelumnya, lihat bawah) TETAP ADA — itu soal aspek, bukan sentimen, dan sudah
+     benar secara metodologis (XNLI = simulasi tahap pelabelan, bukan pembanding produksi setara).
+6. **PENTING — belum tentu menyelesaikan keluhan asli user.** Kekhawatiran user yang memicu semua
+   ini ("MASA MASUKNYA TEKNIKAL JIR" untuk komentar ambigu/nonsensical) adalah soal **klasifikasi
+   ASPEK** (DistilBERT, threshold 0.5, precision rendah utk Technical 0.523 & Financial 0.449 vs
+   Gold Standard). Pivot sentimen→XNLI ini TIDAK mengubah cara aspek dideteksi sama sekali — kalau
+   user tes ulang dan komentar ambigu masih ke-flag Technical, ituECHO dari masalah aspek yang
+   sama, bukan sesuatu yang baru rusak. Perlu di-follow-up eksplisit ke user kalau isu itu muncul
+   lagi setelah deploy versi ini, supaya tidak salah kira pivot ini gagal.
+- Semua file (`app.py`, `pipeline.py`, `inference.py`, `README.md`) sudah dicompile-check
+  (`python3 -m py_compile`) tanpa error, dan sudah dikirim ke user via SendUserFile.
 
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
+---
 
-Buka `http://localhost:8501` di browser.
+# Status sebelumnya: reframing "Pembanding" → "Simulasi Pelabelan Otomatis" (XNLI vs DistilBERT)
 
-**Wajib koneksi internet** saat pertama kali memakai halaman "Prediksi
-Komentar":
+User koreksi framing: *"fungsi xnli zeroshot itu untuk melabelkan, lalu distilbert itu model untuk
+mencari angka kayak f1 accuracy... masa distilbert di vs kan dengan xnli itu salah."* — XNLI dan
+DistilBERT bukan dua model produksi yang bersaing; XNLI dipakai di penelitian HANYA untuk melabeli
+59.620 data latih secara otomatis (tahap labeling), lalu DistilBERT di-fine-tune dari label
+tersebut dan jadi model klasifikasi final yang diukur F1/precision/recall-nya.
 
-- Model DistilBERT aspek (~260MB) diunduh otomatis sekali dari
-  [GitHub Release milik penulis](https://github.com/Fajarjauza/skripsi-model/releases/tag/v1.1)
-  dan disimpan di folder `models_cache/` (dibuat otomatis, jangan di-commit
-  ke git — sudah ada di `.gitignore`). Model DistilBERT sentimen tidak lagi
-  diunduh di jalur live prediction (lihat "Pembagian peran model" di bawah).
-- Tokenizer dasar (`cahya/distilbert-base-indonesian`) dan model zero-shot
-  (`MoritzLaurer/mDeBERTa-v3-base-mnli-xnli`, sekarang dipakai di **kedua**
-  mode karena jadi satu-satunya sumber sentimen) diunduh otomatis dari
-  HuggingFace Hub oleh library `transformers` dan di-cache di
-  `~/.cache/huggingface`.
+Perubahan saat itu (masih berlaku, kecuali bagian sentimen yang sudah di-pivot lagi di atas):
+- Chip & label UI: "Pembanding" → "Simulasi Label Otomatis (XNLI)".
+- Card "how it works" dan info-box di bawah chart perbandingan aspek dijelaskan ulang: XNLI =
+  simulasi tahap pelabelan (bukan model produksi setara), DistilBERT = model klasifikasi final
+  hasil fine-tuning dari label tersebut.
+- Diverifikasi (via `training_args.bin` → `strings`) bahwa checkpoint yang dipakai app memang
+  rasio terbaik: aspek 80:10:10, sentimen 60:20:20 (match `data.py`).
 
-Setelah unduhan pertama selesai, pemakaian berikutnya jauh lebih cepat karena
-sudah tersimpan lokal.
+---
 
-## Pembagian peran model (halaman Prediksi Komentar)
+# Status sebelumnya: deployment Streamlit Community Cloud — 3 masalah nyata & solusinya
 
-Sesuai metodologi penelitian — XNLI zero-shot dipakai untuk **melabeli**,
-DistilBERT dipakai untuk **mengukur performa klasifikasi (F1/precision/recall)**
-— pipeline live prediction dibagi begini:
+1. **Build gagal: `gensim==4.3.3` gagal compile di Python 3.14.7.** Tidak ada wheel prebuilt
+   gensim untuk Python 3.14 (terlalu baru), fallback build-from-source Cython gagal karena
+   C-API CPython/numpy yang dipakai kode gensim sudah berubah/dihapus. **Fix: BUKAN via kode** —
+   pilih Python 3.11 secara eksplisit di dialog "Advanced settings" saat deploy Streamlit Cloud
+   (pin via `runtime.txt` dikonfirmasi tidak berfungsi saat ini — streamlit/streamlit#15326).
+2. **"You do not have access to this app or it does not exist"** saat pilih repo di Streamlit
+   Cloud, padahal akun & repo benar. Penyebab: GitHub App milik Streamlit belum diberi akses ke
+   repo baru tsb (App discope ke "Only select repositories" sebelum repo dibuat). Fix: user buka
+   github.com/settings/installations → Streamlit app → Configure → tambahkan repo (atau ganti ke
+   "All repositories").
+3. **Tampilan dashboard pucat/washed-out** meski hard refresh. Penyebab: folder `.streamlit/`
+   (dotfile-prefixed) tidak ikut ter-upload saat upload manual via GitHub browser karena file
+   manager OS (Finder/Explorer) menyembunyikan dotfile secara default — dikonfirmasi lewat
+   screenshot listing repo user yang memang tidak ada folder `.streamlit`. Fix: user buat file
+   baru langsung di GitHub UI dengan path persis `.streamlit/config.toml`, isi tema warna cyan
+   (`primaryColor = "#0e7490"`, dll — lihat riwayat chat untuk isi lengkap).
+4. **Optimasi tambahan yang ditemukan & diterapkan:** `requirements.txt` ditambah
+   `--extra-index-url https://download.pytorch.org/whl/cpu` sebelum baris `torch` — mencegah pip
+   menarik wheel CUDA (~2GB+ dependency NVIDIA yang sama sekali tidak dipakai karena Streamlit
+   Cloud tanpa GPU). Ditemukan dengan mempelajari repo deploy teman user
+   (github.com/FrenhliX/dashboard-ta-ppd, branch default `master` bukan `main`) — teman user juga
+   pakai "simulation mode" (data statis, bukan live inference) sebagai shortcut resource, TAPI itu
+   sengaja TIDAK direplikasi di sini karena bertentangan dengan requirement inti proyek ini
+   (live inference asli, bukan simulasi).
+5. User secara eksplisit minta link gaya Streamlit Community Cloud (`https://dashboard-ta-fahad-
+   ppd.streamlit.app/`, contoh dari repo temannya) — sehingga platform pilihan akhir adalah
+   Streamlit Community Cloud, BUKAN Hugging Face Spaces (v5, `dashboard_ta_v5_hf_spaces.zip`) yang
+   sempat direkomendasikan lebih dulu karena RAM lebih besar (16GB vs ±1GB). Paket HF Spaces tetap
+   disimpan sebagai cadangan kalau Streamlit Cloud kehabisan resource untuk Mode Lengkap.
 
-- **DistilBERT** (fine-tuned, rasio 80:10:10 — rasio terbaik hasil eksperimen,
-  checkpoint *best epoch* berdasarkan `eval_loss` terendah) HANYA dipakai untuk
-  menghitung **skor/probabilitas aspek** (Individual/Technical/Social/Financial).
-- **Sentimen** (positif/negatif/netral) sepenuhnya memakai **XNLI zero-shot**
-  di kedua mode ("Cepat" maupun "Lengkap") — bukan DistilBERT sentimen —
-  konsisten dengan cara data latih penelitian ini dilabeli. Model DistilBERT
-  sentimen (checkpoint rasio 60:20:20) tetap ada di `models_final/sentimen`
-  dan tetap dipakai untuk menghitung metrik performa statis Bab IV, tapi
-  **tidak dipanggil lagi** di jalur prediksi live ini.
-- Halaman Prediksi Komentar menampilkan hasil **murni dari model** — tidak
-  ada nilai Gold Standard skripsi yang disisipkan ke hasil prediksi komentar
-  pengguna sendiri (nilai Gold Standard tetap ditampilkan apa adanya di
-  halaman "Detail Penelitian", karena itu memang hasil penelitian statis).
-- Karena XNLI (±1-2GB) sekarang wajib dimuat untuk setiap prediksi, mode
-  "Cepat" tidak lagi berarti "tanpa XNLI" — bedanya dengan mode "Lengkap"
-  sekarang hanya ada/tidaknya Topic Modeling (LDA) dan simulasi label aspek
-  XNLI tambahan.
+## Struktur aplikasi (sejak v3, masih berlaku)
+Sidebar 3 menu: **Dashboard Utama**, **Detail Penelitian** (sub-menu 7 halaman),
+**Prediksi Komentar** (mode Cepat/Lengkap × Satu/Batch komentar, maks 500 karakter,
+maks 10 komentar, min 3 kata).
 
-## Deploy
+## File
+- `app.py` — routing + layout + UI prediksi
+- `charts.py` — semua chart & tabel statis, di-cache `st.cache_resource`
+- `ui.py` — CSS + komponen (hero, kpi, card, navcard, section, info, badge, progress_bar)
+- `pipeline.py` — orkestrasi prediksi batch (`analisis_banyak`, `siapkan_model`, `prewarm_async`)
+- `preprocessing.py`, `inference.py`, `topic_modeling.py`, `topic_names.py`, `data.py`
+- `assets/kamus/*.csv`, `assets/lda/<Aspek>/*` + `{bigram,trigram}_phraser.gensim`
+- `.streamlit/config.toml` — tema warna (dotfile, gampang ketinggalan saat upload manual — lihat
+  masalah #3 di atas)
+- Total ukuran project HANYA ±1,5MB (model weights TIDAK dibundel, diunduh runtime dari
+  GitHub Release + HuggingFace Hub).
 
-Karena model zero-shot XNLI berukuran besar (~1-2GB) dan sekarang wajib
-dimuat di **kedua** mode (bukan cuma mode "Lengkap" seperti sebelumnya),
-proses inference-nya cukup berat. **Dijalankan secara lokal di komputer
-sendiri lebih disarankan** daripada Streamlit Community Cloud (free tier
-Streamlit Cloud punya batas resource yang kemungkinan tidak cukup).
+## Riset perbandingan platform (WebSearch, Agustus 2026)
 
-Kalau tetap ingin deploy ke Streamlit Community Cloud (halaman hasil
-penelitian statis tetap akan berfungsi normal; halaman "Prediksi Komentar"
-mode "Lengkap" berisiko lambat/gagal karena keterbatasan resource):
+| Platform | RAM free tier | Cocok? |
+|---|---|---|
+| Streamlit Community Cloud | ±1GB per app | Dipakai (sesuai preferensi format link user); berisiko untuk Mode Lengkap & sekarang mode Cepat juga (XNLI wajib di semua mode sejak pivot terbaru) |
+| Hugging Face Spaces "CPU basic" | 2 vCPU / 16GB RAM / ±50GB disk sementara, gratis | Lebih aman, disiapkan sebagai cadangan (v5) |
 
-1. Push seluruh folder ini ke sebuah repository GitHub.
-2. Buka [share.streamlit.io](https://share.streamlit.io), hubungkan repo
-   tersebut, pilih `app.py` sebagai main file, lalu Deploy.
+## OPTIMASI v4 (percepat pergantian halaman & pemodelan, TANPA mengubah hasil) — masih berlaku
 
-## Struktur file
+| Aspek | Sebelum | Sesudah |
+|---|---|---|
+| Buka aplikasi pertama kali | 6,17 s | **1,39 s** |
+| Rata-rata pindah halaman (cache panas) | ~0,33 s | **0,119 s** |
+| Prediksi pertama (klik tombol) | 9,71 s | **1,41 s** (angka ini dari SEBELUM pivot sentimen→XNLI; sejak XNLI wajib di semua mode, prediksi pertama mode Cepat jadi lebih lambat lagi dari 1,41s ini) |
+| Batch 10 komentar (mode Cepat) | 1,14 s | **0,40 s** (2,9x) |
 
-- `app.py` — routing 3 menu utama, layout tiap halaman, dan UI halaman prediksi.
-- `charts.py` — semua chart & tabel statis, dibangun sekali lalu di-cache (`st.cache_resource`).
-- `ui.py` — sistem styling (CSS) + komponen reusable: hero, KPI card, card, nav card, badge, info box, popup loading.
-- `pipeline.py` — orkestrasi pipeline prediksi untuk satu / banyak komentar (batch), plus batas input.
-- `data.py` — seluruh data penelitian (tabel-tabel dari Bab IV & V skripsi) dalam bentuk pandas DataFrame, plus palet warna.
-- `preprocessing.py` — text cleaning & normalisasi kamus (replikasi persis notebook `01_data_selection_preprocessing`).
-- `inference.py` — download & load model DistilBERT aspek + XNLI zero-shot, fungsi prediksi. Model
-  DistilBERT sentimen tetap didefinisikan di sini untuk keperluan metrik statis Bab IV, tapi tidak
-  dipanggil di jalur live prediction.
-- `topic_modeling.py` — tokenisasi/stemming/ngram + lookup dominant topic LDA per aspek (replikasi persis notebook `06a_topic_modeling_subaspek`).
-- `topic_names.py` — nama 33 sub-topik LDA hasil interpretasi manual penulis.
-- `assets/kamus/` — 3 CSV kamus normalisasi (typo/singkatan, huruf berlebih, non-Indonesia).
-- `assets/lda/` — dictionary + model gensim LDA per aspek (Individual/Technical/Social/Financial) + bigram/trigram phraser.
-- `.streamlit/config.toml` — tema warna Streamlit.
-- `requirements.txt` — dependensi Python.
+Perubahan: lazy import torch/transformers/gensim/Sastrawi, cache chart (`st.cache_resource`),
+prewarm background thread, batching penuh, padding dinamis + `torch.inference_mode()`, cache hasil
+analisis (`st.cache_data`), `fileWatcherType = "none"` di config.toml, cache stemming per kata.
 
-## Struktur menu
+### Verifikasi kesetaraan hasil (WAJIB dijaga kalau ada perubahan lagi)
+Dibandingkan implementasi lama (per-teks, `padding="max_length"`, `no_grad`) vs baru pada
+60 + 40 komentar acak: preprocessing/stemming/aspek/sentimen semua **identik** di level string
+tampilan (3/2 desimal); selisih numerik mentah ~1e-8 (floating point). Bandingkan string
+terformat (`f"{v:.3f}"`), JANGAN `np.round()` (beda dtype float32/float64 menyesatkan).
 
-Sidebar hanya berisi **3 menu utama**:
-
-1. **Dashboard Utama** — ringkasan angka kunci, tampilan "Sekilas Hasil" yang bisa diganti-ganti
-   (distribusi aspek / sentimen / performa model), tahapan KDD, dan kartu navigasi.
-2. **Detail Penelitian** — memunculkan sub-menu berisi 7 halaman:
-   Data & Preprocessing · Gold Standard & Reliabilitas · Pelabelan Otomatis (XNLI) ·
-   Performa Model DistilBERT · Topic Modeling (LDA) · Validasi Ahli · Kesimpulan & Insight.
-3. **Prediksi Komentar** — jalankan pipeline lengkap (preprocessing → skor aspek DistilBERT →
-   sentimen per aspek via XNLI → topic modeling → simulasi pelabelan otomatis aspek zero-shot,
-   mode Lengkap) pada komentar sendiri. Hasil murni dari model, tanpa nilai Gold Standard
-   penelitian disisipkan. Lihat bagian "Pembagian peran model" di atas untuk detail lengkap
-   pembagian tugas DistilBERT vs XNLI.
-
-## Batas input pada halaman Prediksi Komentar
-
-- Maksimal **500 karakter** per komentar.
-- Mode **satu komentar** atau **banyak komentar (batch)** — batch maksimal **10 komentar**,
-  ditulis satu komentar per baris.
-- Komentar dengan kurang dari **3 kata** setelah preprocessing otomatis dilewati, mengikuti
-  aturan filtering yang dipakai di penelitian.
-- Hasil batch dilengkapi ringkasan agregat (KPI, grafik, tabel) dan tombol **unduh CSV**.
-
-Nilai batas ini diatur di `pipeline.py` (`MAX_CHAR`, `MAX_BATCH`, `MIN_KATA`).
-
-## Catatan performa
-
-Beberapa optimasi diterapkan **tanpa mengubah hasil prediksi sedikit pun**
-(sudah diverifikasi: angka yang ditampilkan dan seluruh label identik dengan
-versi sebelumnya):
-
-1. **Pustaka machine learning dimuat malas.** `torch`, `transformers`, `gensim`,
-   dan `Sastrawi` baru diimpor saat halaman Prediksi Komentar benar-benar dipakai,
-   bukan saat aplikasi dibuka. Waktu buka aplikasi turun dari ±6 detik ke ±1,4 detik.
-2. **Chart statis di-cache.** Seluruh grafik dan tabel yang datanya tetap dibangun
-   satu kali lalu dipakai ulang, sehingga berpindah halaman tidak membangun ulang
-   puluhan figure Plotly (rata-rata ±0,33 detik → ±0,12 detik per perpindahan).
-3. **Model dimuat di latar belakang.** Begitu halaman Prediksi Komentar dibuka,
-   model (DistilBERT aspek + XNLI) mulai dimuat diam-diam sambil pengguna
-   mengetik, sehingga saat tombol ditekan model sudah lebih siap. Catatan:
-   sejak sentimen sepenuhnya memakai XNLI di kedua mode, model zero-shot
-   XNLI (±1-2GB) kini ikut dimuat pada prediksi pertama di mode "Cepat" juga
-   — bukan cuma mode "Lengkap" seperti sebelumnya — sehingga waktu tunggu
-   prediksi pertama menjadi lebih lama dibanding versi lama.
-4. **Prediksi diproses sekaligus (batch) + padding dinamis.** Semua komentar
-   dihitung dalam satu forward pass, dan token padding tidak ikut dihitung karena
-   model memakai `attention_mask`. Bobot model, tokenizer, `max_length=96`, dan
-   threshold 0,5 tetap sama persis seperti saat training — hanya cara
-   menjalankannya yang lebih efisien (2,9–7,4x lebih cepat).
-5. **Hasil analisis di-cache.** Menganalisis komentar yang sama untuk kedua kalinya
-   langsung tampil tanpa menjalankan ulang model.
-6. **Pemantau perubahan file dimatikan** lewat `.streamlit/config.toml`
-   (`fileWatcherType = "none"`), karena setiap kali `transformers` selesai dimuat,
-   pemantau Streamlit menelusuri seluruh isi paketnya dan memakan waktu beberapa detik.
-
-## Mengubah data
-
-Semua angka statis terpusat di `data.py`. Untuk memperbarui (misalnya
-setelah revisi skripsi), cukup ubah nilai di file tersebut — layout `app.py`
-akan otomatis mengikuti.
+## Catatan penting yang masih berlaku
+- `requirements.txt` mem-pin `numpy==1.26.4` dan `gensim==4.3.3` — JANGAN diubah tanpa
+  men-generate ulang `assets/lda/*.gensim`.
+- `requirements.txt` juga punya `--extra-index-url https://download.pytorch.org/whl/cpu` sebelum
+  `torch` — JANGAN dihapus (lihat masalah #4 di atas).
+- Threshold aspek DistilBERT = 0.5 flat (sesuai keputusan notebook 05a sendiri, threshold-tuning
+  grid 0.30-0.85 tidak diadopsi karena tidak memenuhi kriteria perbaikan >0.005 F1 macro).
+- `TA_BASE_MODEL` / `TA_XNLI_MODEL` env var bisa dipakai untuk pengujian offline.
+- Sandbox Claude tidak bisa akses huggingface.co / github.com via curl langsung (403/blocked);
+  WebFetch tool berhasil di jalur berbeda. Mode "Lengkap" (XNLI) tidak pernah dieksekusi
+  sungguhan di sandbox Claude karena butuh internet ke huggingface.co, tapi berjalan normal di
+  platform hosting (Streamlit Cloud / HF Spaces).
+- ASPECTS order `["Individual", "Technical", "Social", "Financial"]` dan SENT_LABELS order
+  `["positif", "negatif", "netral"]` di `inference.py` SUDAH diverifikasi cocok persis dengan
+  urutan kolom/label saat training (`05a_modeling_aspek.ipynb`, `05b_modeling_sentimen.ipynb`) —
+  bukan sumber bug.
+- Precision Technical (0.523) & Financial (0.449) vs Gold Standard memang rendah secara riil
+  (didokumentasikan di skripsi sendiri, traceable ke AUC XNLI rendah 0.47/0.33 saat eksperimen
+  hipotesis) — ini penjelasan asli kenapa komentar ambigu sering ke-flag Technical, BUKAN bug
+  index-mapping (sempat dicurigai, sudah diverifikasi salah sebelum disampaikan ke user).
