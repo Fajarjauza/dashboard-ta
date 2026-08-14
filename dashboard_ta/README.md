@@ -76,7 +76,10 @@ Sidebar hanya berisi **3 menu utama**:
    Data & Preprocessing · Gold Standard & Reliabilitas · Pelabelan Otomatis (XNLI) ·
    Performa Model DistilBERT · Topic Modeling (LDA) · Validasi Ahli · Kesimpulan & Insight.
 3. **Prediksi Komentar** — jalankan pipeline lengkap (preprocessing → deteksi aspek →
-   sentimen per aspek → topic modeling → pembanding zero-shot) pada komentar sendiri.
+   sentimen per aspek → topic modeling → simulasi pelabelan otomatis zero-shot) pada komentar
+   sendiri. DistilBERT (rasio terbaik hasil eksperimen: 80:10:10 aspek, 60:20:20 sentimen) adalah
+   model klasifikasi final; XNLI zero-shot hanya disimulasikan ulang sebagai ilustrasi tahap
+   pelabelan otomatis, bukan model produksi yang disandingkan setara.
 
 ## Batas input pada halaman Prediksi Komentar
 
